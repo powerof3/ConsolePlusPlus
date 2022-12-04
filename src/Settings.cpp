@@ -16,6 +16,8 @@ Settings::Settings()
 	ini::get_value(ini, enableCopyPaste, "Settings", "Copy Paste", ";Copy text from clipboard and paste into console");
 	ini::get_value(ini, enableCommandCache, "Settings", "Cache Commands", ";Cache commands between game instances");
 
+	ini::get_value(ini, commandHistoryLimit, "Settings", "Command History Limit", ";Number of commands to save\n;Default: 50");
+
 	ini::get_value(ini, primaryKey, "CopyPaste", "Primary Key", ";Keyboard scan codes : https://wiki.nexusmods.com/index.php/DirectX_Scancodes_And_How_To_Use_Them\n;Default: Left Ctrl");
 	ini::get_value(ini, secondaryKey, "CopyPaste", "Secondary Key", ";Default: V");
 	ini::get_value(ini, pasteType, "CopyPaste", "Paste Type", ";0 - insert text at cursor position | 1 - append text");
@@ -24,7 +26,7 @@ Settings::Settings()
 	(void)ini.SaveFile(path);
 }
 
-void Settings::SaveCommands(const std::vector<std::string>& a_commands) const
+void Settings::SaveCommands(std::vector<std::string>& a_commands) const
 {
 	CSimpleIniA ini;
 	ini.SetUnicode();
@@ -33,11 +35,15 @@ void Settings::SaveCommands(const std::vector<std::string>& a_commands) const
 
 	ini.Delete("ConsoleCommands", nullptr);
 	if (!a_commands.empty()) {
-		for (std::uint32_t i = 0; i < a_commands.size(); i++) {
+		if (a_commands.size() > commandHistoryLimit) {
+			std::ranges::reverse(a_commands);
+			a_commands.resize(commandHistoryLimit);
+			std::ranges::reverse(a_commands);
+		}
+	    for (std::uint32_t i = 0; i < a_commands.size(); i++) {
 			ini.SetValue("ConsoleCommands", fmt::format("Command{}", i).c_str(), a_commands[i].c_str());
 		}
 	}
-
 	(void)ini.SaveFile(path);
 }
 
@@ -51,9 +57,15 @@ std::vector<std::string> Settings::LoadCommands() const
 	ini.LoadFile(path);
 
 	if (const auto section = ini.GetSection("ConsoleCommands"); section && !section->empty()) {
-		for (const auto& entry : *section | std::views::values) {
+	    for (const auto& entry : *section | std::views::values) {
 			commands.emplace_back(entry);
 		}
+	}
+
+	if (commands.size() > commandHistoryLimit) {
+		std::ranges::reverse(commands);
+		commands.resize(commandHistoryLimit);
+		std::ranges::reverse(commands);
 	}
 
 	return commands;

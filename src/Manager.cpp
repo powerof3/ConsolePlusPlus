@@ -65,7 +65,15 @@ namespace Console
 	void Manager::SaveCommands()
 	{
 		if (const auto consoleMovie = util::GetConsoleMovie()) {
-			RE::GFxValue commandsVal;
+			// MIC's Clear command does not clear command array
+
+		    /*const auto commandHistory = util::GetVariableString(consoleMovie, "_global.Console.ConsoleInstance.CommandHistory.text");
+			if (commandHistory.empty()) {
+				Settings::GetSingleton()->ClearCommands();
+				return;
+			}*/ 
+
+		    RE::GFxValue commandsVal;
 			consoleMovie->GetVariable(&commandsVal, "_global.Console.ConsoleInstance.Commands");
 
 			if (commandsVal.IsArray()) {
