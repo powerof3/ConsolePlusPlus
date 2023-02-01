@@ -182,13 +182,11 @@ namespace Console
 					if (button->IsHeld()) {
 						keyCombo1 = true;
 					} else {
-						keyCombo1 = false; 
+						keyCombo1 = false;
 					}
 				}
-				if (keyCombo1) {
-					if (keyCombo1 && key == settings->secondaryKey && button->IsDown()) {  // wait for V to be down, not pressed!
-						keyCombo2 = true;
-					}
+				if (keyCombo1 && key == settings->secondaryKey && button->IsDown()) {  // wait for V to be down, not pressed!
+					keyCombo2 = true;
 				}
 			}
 		}
