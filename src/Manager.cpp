@@ -67,13 +67,13 @@ namespace Console
 		if (const auto consoleMovie = util::GetConsoleMovie()) {
 			// MIC's Clear command does not clear command array
 
-		    /*const auto commandHistory = util::GetVariableString(consoleMovie, "_global.Console.ConsoleInstance.CommandHistory.text");
+			/*const auto commandHistory = util::GetVariableString(consoleMovie, "_global.Console.ConsoleInstance.CommandHistory.text");
 			if (commandHistory.empty()) {
 				Settings::GetSingleton()->ClearCommands();
 				return;
-			}*/ 
+			}*/
 
-		    RE::GFxValue commandsVal;
+			RE::GFxValue commandsVal;
 			consoleMovie->GetVariable(&commandsVal, "_global.Console.ConsoleInstance.Commands");
 
 			if (commandsVal.IsArray()) {
@@ -178,11 +178,17 @@ namespace Console
 		for (auto event = *a_evn; event; event = event->next) {
 			if (const auto button = event->AsButtonEvent(); button) {
 				const auto key = static_cast<RE::BSKeyboardDevice::Keys::Key>(button->GetIDCode());
-				if (key == settings->primaryKey && button->IsHeld()) {  // hold left shift
-					keyCombo1 = true;
+				if (key == settings->primaryKey) {  // hold left shift
+					if (button->IsHeld()) {
+						keyCombo1 = true;
+					} else {
+						keyCombo1 = false; 
+					}
 				}
-				if (keyCombo1 && key == settings->secondaryKey && button->IsDown()) {  // wait for V to be down, not pressed!
-					keyCombo2 = true;
+				if (keyCombo1) {
+					if (keyCombo1 && key == settings->secondaryKey && button->IsDown()) {  // wait for V to be down, not pressed!
+						keyCombo2 = true;
+					}
 				}
 			}
 		}
