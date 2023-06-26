@@ -82,45 +82,53 @@ namespace Console
 					Settings::GetSingleton()->ClearCommands();
 					return;
 				}
+
+				logger::info("Saving commands to file...");
+
 				std::vector<std::string> commands;
 				commands.reserve(size);
 
-				RE::GFxValue commandsElement;
-				for (std::uint32_t i = 0; i < size; i++) {
-					commandsVal.GetElement(i, &commandsElement);
-					if (commandsElement.IsString()) {
-						commands.emplace_back(commandsElement.GetString());
+				commandsVal.VisitMembers([&]([[maybe_unused]] const char* a_name, const RE::GFxValue& a_val) {
+					if (a_val.IsString()) {
+						commands.emplace_back(a_val.GetString());
 					}
-				}
+				});
 
 				Settings::GetSingleton()->SaveCommands(commands);
 			}
 		}
 	}
 
-	void Manager::LoadCommands()
+	void Manager::LoadCachedCommands()
 	{
-		if (const auto consoleMovie = util::GetConsoleMovie()) {
-			const std::vector<std::string> commands = Settings::GetSingleton()->LoadCommands();
+		if (!loadedCommandsFromCache) {
+			loadedCommandsFromCache = true;
 
-			if (commands.empty()) {
-				return;
-			}
+			SKSE::GetTaskInterface()->AddUITask([] {
+				const std::vector<std::string> commands = Settings::GetSingleton()->LoadCommands();
 
-			RE::GFxValue commandsVal;
-			consoleMovie->GetVariable(&commandsVal, "_global.Console.ConsoleInstance.Commands");
-
-			if (commandsVal.IsArray()) {
-				const auto size = commands.size();
-				commandsVal.SetArraySize(static_cast<std::uint32_t>(size));
-
-				for (std::uint32_t i = 0; i < size; i++) {
-					RE::GFxValue element(commands[i]);
-					commandsVal.SetElement(i, element);
+				if (commands.empty()) {
+					logger::info("Cached commands not found...");
+					return;
 				}
 
-				consoleMovie->SetVariable("_global.Console.ConsoleInstance.Commands", commandsVal, RE::GFxMovie::SetVarType::kNormal);
-			}
+				if (const auto consoleMovie = util::GetConsoleMovie()) {
+					logger::info("Loading cached commands from file...");
+
+				    RE::GFxValue commandsVal;
+					consoleMovie->GetVariable(&commandsVal, "_global.Console.ConsoleInstance.Commands");
+
+					if (commandsVal.IsArray()) {
+						commandsVal.ClearElements();
+						for (auto& command : commands) {
+							RE::GFxValue element(command);
+							commandsVal.PushBack(element);
+						}
+
+						consoleMovie->SetVariable("_global.Console.ConsoleInstance.Commands", commandsVal, RE::GFxMovie::SetVarType::kNormal);
+					}
+				}
+			});
 		}
 	}
 
@@ -137,20 +145,14 @@ namespace Console
 			const auto settings = Settings::GetSingleton();
 
 			if (a_evn->opening) {
-				std::call_once(onGameStart, [&] {
-					if (settings->enableCommandCache) {
-						logger::info("Loading cached commands from file...");
-						SKSE::GetTaskInterface()->AddUITask([] {
-							LoadCommands();
-						});
-					}
-				});
+				if (settings->enableCommandCache) {
+					LoadCachedCommands();
+				}
 				if (settings->enableCopyPaste) {
 					inputMgr->AddEventSink(GetSingleton());
 				}
 			} else {
 				if (settings->enableCommandCache) {
-					logger::info("Saving commands to file...");
 					SKSE::GetTaskInterface()->AddUITask([] {
 						SaveCommands();
 					});
@@ -166,17 +168,15 @@ namespace Console
 
 	EventResult Manager::ProcessEvent(RE::InputEvent* const* a_evn, RE::BSTEventSource<RE::InputEvent*>*)
 	{
-		using InputType = RE::INPUT_EVENT_TYPE;
-
 		if (!a_evn || keyCombo1 && keyCombo2) {
 			return EventResult::kContinue;
 		}
 
 		const auto settings = Settings::GetSingleton();
-		bool pasteAtEnd = settings->pasteType == Settings::PasteType::kEndOfText;
+		bool       pasteAtEnd = settings->pasteType == Settings::PasteType::kEndOfText;
 
 		for (auto event = *a_evn; event; event = event->next) {
-			if (const auto button = event->AsButtonEvent(); button) {
+			if (const auto button = event->AsButtonEvent()) {
 				const auto key = static_cast<RE::BSKeyboardDevice::Keys::Key>(button->GetIDCode());
 				if (key == settings->primaryKey) {  // hold left shift
 					if (button->IsHeld()) {
@@ -222,7 +222,7 @@ namespace Console
 									oldText.erase(0, 1);
 								}
 								std::string newText = oldText;
-								bool appended{ false };
+								bool        appended{ false };
 								// get cursor position
 								const auto cursorPos = util::GetVariableInt(consoleMovie, "_global.Console.ConsoleInstance.CommandEntry.caretIndex");
 								// insert at cursor pos

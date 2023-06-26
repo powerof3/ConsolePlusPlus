@@ -40,7 +40,7 @@ void Settings::SaveCommands(std::vector<std::string>& a_commands) const
 			a_commands.resize(commandHistoryLimit);
 			std::ranges::reverse(a_commands);
 		}
-	    for (std::uint32_t i = 0; i < a_commands.size(); i++) {
+		for (std::uint32_t i = 0; i < a_commands.size(); i++) {
 			ini.SetValue("ConsoleCommands", fmt::format("Command{}", i).c_str(), a_commands[i].c_str());
 		}
 	}
@@ -49,16 +49,21 @@ void Settings::SaveCommands(std::vector<std::string>& a_commands) const
 
 std::vector<std::string> Settings::LoadCommands() const
 {
-	std::vector<std::string> commands;
+	std::vector<std::string> commands{};
 
 	CSimpleIniA ini;
 	ini.SetUnicode();
 
 	ini.LoadFile(path);
 
-	if (const auto section = ini.GetSection("ConsoleCommands"); section && !section->empty()) {
-	    for (const auto& entry : *section | std::views::values) {
-			commands.emplace_back(entry);
+    if (const auto section = ini.GetSection("ConsoleCommands"); section && !section->empty()) {
+		// GetSection sorts by string order, smh SimpleINI
+        std::map<int, std::string> commandMap;
+	    for (const auto& [key,entry] : *section) {
+	        commandMap.emplace(key.nOrder, entry);
+		}
+		for (const auto& entry : commandMap | std::views::values) {
+		    commands.emplace_back(entry);
 		}
 	}
 
