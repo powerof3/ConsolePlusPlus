@@ -38,8 +38,8 @@ git clone https://github.com/powerof3/ConsolePlusPlus.git
 cd ConsolePlusPlus
 # pull commonlib /extern to override the path settings
 git submodule init
-# to update submodules to checked in build
-git submodule update
+# to update submodules to checked-out build (warning, pulling newer versions may result in build problems)
+git submodule update --recursive
 ```
 
 ### SSE
