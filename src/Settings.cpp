@@ -1,89 +1,148 @@
 #include "Settings.h"
 
-Settings* Settings::GetSingleton()
-{
-	static Settings singleton;
-	return std::addressof(singleton);
-}
-
-Settings::Settings()
+void Settings::LoadSettings()
 {
 	CSimpleIniA ini;
 	ini.SetUnicode();
 
-	ini.LoadFile(path);
+	ini.LoadFile(configPath);
 
-	ini::get_value(ini, enableCopyPaste, "Settings", "Copy Paste", ";Copy text from clipboard and paste into console");
-	ini::get_value(ini, enableCommandCache, "Settings", "Cache Commands", ";Cache commands between game instances");
+	// 1.4.0 -  delete old settings
+	if (ini.GetLongValue("Settings", "Command History Limit", -1) != -1) {
+		ini.Delete("Settings", nullptr);
+		ini.Delete("CopyPaste", nullptr);
+	}
 
-	ini::get_value(ini, commandHistoryLimit, "Settings", "Command History Limit", ";Number of commands to save\n;Default: 50");
+	ini::get_value(ini, enableCopyPaste, "Settings", "bCopyPaste", ";Copy text from clipboard and paste into console");
+	ini::get_value(ini, enableConsoleHistory, "Settings", "bCacheConsoleHistory", ";Cache console entries between game instances");
 
-	ini::get_value(ini, primaryKey, "CopyPaste", "Primary Key", ";Keyboard scan codes : https://wiki.nexusmods.com/index.php/DirectX_Scancodes_And_How_To_Use_Them\n;Default: Left Ctrl");
-	ini::get_value(ini, secondaryKey, "CopyPaste", "Secondary Key", ";Default: V");
-	ini::get_value(ini, pasteType, "CopyPaste", "Paste Type", ";0 - insert text at cursor position | 1 - append text");
-	ini::get_value(ini, inputDelay, "CopyPaste", "Input delay", ";Delay between key press and text paste (in milliseconds)");
+	ini::get_value(ini, consoleHistoryLimit, "Settings", "iConsoleHistoryLimit", ";Number of console entries to save\n;Default: 50");
+	ini::get_value(ini, allowDuplicateHistory, "Settings", "bAllowDuplicateConsoleHistory", ";Save duplicate console entries");
 
-	(void)ini.SaveFile(path);
-}
+	ini::get_value(ini, primaryKey, "CopyPaste", "iPrimaryKey", ";Keyboard scan codes : https://wiki.nexusmods.com/index.php/DirectX_Scancodes_And_How_To_Use_Them\n;Default: Left Ctrl");
+	ini::get_value(ini, secondaryKey, "CopyPaste", "iSecondaryKey", ";Default: V");
+	ini::get_value(ini, pasteType, "CopyPaste", "iPasteType", ";0 - insert text at cursor position | 1 - append text");
+	ini::get_value(ini, inputDelay, "CopyPaste", "iInputDelay", ";Delay between key press and text paste (in milliseconds)");
 
-void Settings::SaveCommands(std::vector<std::string>& a_commands) const
-{
-	CSimpleIniA ini;
-	ini.SetUnicode();
+	(void)ini.SaveFile(configPath);
 
-	ini.LoadFile(path);
-
-	ini.Delete("ConsoleCommands", nullptr);
-	if (!a_commands.empty()) {
-		if (a_commands.size() > commandHistoryLimit) {
-			std::ranges::reverse(a_commands);
-			a_commands.resize(commandHistoryLimit);
-			std::ranges::reverse(a_commands);
-		}
-		for (std::uint32_t i = 0; i < a_commands.size(); i++) {
-			ini.SetValue("ConsoleCommands", fmt::format("Command{}", i).c_str(), a_commands[i].c_str());
+	if (consoleHistoryPath = logger::log_directory(); consoleHistoryPath) {
+		consoleHistoryPath->remove_filename();  // remove "/SKSE"
+		consoleHistoryPath->append("SkyrimConsoleHistory.txt");
+		if (!std::filesystem::exists(*consoleHistoryPath)) {
+			std::ofstream ofs{ *consoleHistoryPath };
 		}
 	}
-	(void)ini.SaveFile(path);
 }
 
-std::vector<std::string> Settings::LoadCommands() const
+const std::vector<std::string>& Settings::GetConsoleHistory()
 {
-	std::vector<std::string> commands{};
+	if (consoleHistoryEntries.empty()) {
+		LoadConsoleHistoryFromFile();
+	}
 
+	return consoleHistoryEntries;
+}
+
+void Settings::SaveConsoleHistoryToFile(const RE::GFxValue& a_consoleHistoryVal)
+{
+	if (consoleHistoryPath) {
+		consoleHistoryEntries.clear();
+
+		a_consoleHistoryVal.VisitMembers([&]([[maybe_unused]] const char* a_name, const RE::GFxValue& a_val) {
+			if (a_val.IsString()) {
+				consoleHistoryEntries.emplace_back(a_val.GetString());
+			}
+		});
+
+		// clear previous contents
+		std::ofstream output_file(*consoleHistoryPath, std::ios_base::out);
+		if (!consoleHistoryEntries.empty()) {
+			if (consoleHistoryEntries.size() > consoleHistoryLimit) {
+				std::ranges::reverse(consoleHistoryEntries);
+				consoleHistoryEntries.resize(consoleHistoryLimit);
+				std::ranges::reverse(consoleHistoryEntries);
+			}
+			if (!allowDuplicateHistory) {
+				RemoveDuplicateHistory();
+			}
+			const std::ostream_iterator<std::string> output_iterator(output_file, "\n");
+			std::ranges::copy(consoleHistoryEntries, output_iterator);
+		}
+		output_file.close();
+	}
+}
+
+void Settings::LoadConsoleHistoryFromFile()
+{
+	consoleHistoryEntries.clear();
+
+	LoadOldConsoleHistoryFromFile();
+
+	if (consoleHistoryEntries.empty()) {
+		if (consoleHistoryPath) {
+			std::ifstream input_file(*consoleHistoryPath, std::ios_base::in);
+			if (input_file.is_open()) {
+				std::string str;
+				while (std::getline(input_file, str)) {
+					if (!str.empty()) {
+						consoleHistoryEntries.push_back(str);
+					}
+				}
+			}
+			input_file.close();
+		}
+	}
+
+	if (consoleHistoryEntries.size() > consoleHistoryLimit) {
+		std::ranges::reverse(consoleHistoryEntries);
+		consoleHistoryEntries.resize(consoleHistoryLimit);
+		std::ranges::reverse(consoleHistoryEntries);
+	}
+
+	if (!allowDuplicateHistory) {
+		RemoveDuplicateHistory();
+	}
+}
+
+void Settings::LoadOldConsoleHistoryFromFile()
+{
 	CSimpleIniA ini;
 	ini.SetUnicode();
 
-	ini.LoadFile(path);
+	ini.LoadFile(configPath);
 
-    if (const auto section = ini.GetSection("ConsoleCommands"); section && !section->empty()) {
+	if (const auto section = ini.GetSection("ConsoleCommands"); section && !section->empty()) {
 		// GetSection sorts by string order, smh SimpleINI
-        std::map<int, std::string> commandMap;
-	    for (const auto& [key,entry] : *section) {
-	        commandMap.emplace(key.nOrder, entry);
+		std::map<int, std::string> commandMap;
+		for (const auto& [key, entry] : *section) {
+			commandMap.emplace(key.nOrder, entry);
 		}
 		for (const auto& entry : commandMap | std::views::values) {
-		    commands.emplace_back(entry);
+			consoleHistoryEntries.emplace_back(entry);
 		}
+		ini.Delete("ConsoleCommands", nullptr);
+		(void)ini.SaveFile(configPath);
 	}
-
-	if (commands.size() > commandHistoryLimit) {
-		std::ranges::reverse(commands);
-		commands.resize(commandHistoryLimit);
-		std::ranges::reverse(commands);
-	}
-
-	return commands;
 }
 
-void Settings::ClearCommands() const
+void Settings::ClearConsoleHistoryFromFile() const
 {
-	CSimpleIniA ini;
-	ini.SetUnicode();
+	if (consoleHistoryPath) {
+		std::ofstream output_file(*consoleHistoryPath, std::ios_base::out);
+		output_file.close();
+	}
+}
 
-	ini.LoadFile(path);
-
-	ini.Delete("ConsoleCommands", nullptr);
-
-	(void)ini.SaveFile(path);
+void Settings::RemoveDuplicateHistory()
+{
+	std::unordered_map<std::string, size_t> last_occurrence;
+	for (auto it = consoleHistoryEntries.rbegin(); it != consoleHistoryEntries.rend();) {
+		const auto& current = *it;
+		if (auto [duplicate, inserted] = last_occurrence.emplace(current, std::distance(consoleHistoryEntries.rbegin(), it)); !inserted) {
+			it = decltype(it)(consoleHistoryEntries.erase(std::next(it).base()));
+		} else {
+			++it;
+		}
+	}
 }

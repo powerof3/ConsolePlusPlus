@@ -1,6 +1,6 @@
 #pragma once
 
-class Settings
+class Settings : public ISingleton<Settings>
 {
 public:
 	enum class PasteType
@@ -9,25 +9,30 @@ public:
 		kEndOfText
 	};
 
-	[[nodiscard]] static Settings* GetSingleton();
+	void LoadSettings();
 
-	void                                   SaveCommands(std::vector<std::string>& a_commands) const;
-	[[nodiscard]] std::vector<std::string> LoadCommands() const;
-	void                                   ClearCommands() const;
+	[[nodiscard]] const std::vector<std::string>& GetConsoleHistory();
 
+	void LoadConsoleHistoryFromFile();
+	void LoadOldConsoleHistoryFromFile();
+	void ClearConsoleHistoryFromFile() const;
+	void RemoveDuplicateHistory();
+
+	void SaveConsoleHistoryToFile(const RE::GFxValue& a_consoleHistoryVal);
+
+	// members
 	bool enableCopyPaste{ true };
-	bool enableCommandCache{ true };
+	bool enableConsoleHistory{ true };
 
 	Key           primaryKey{ Key::kLeftControl };
 	Key           secondaryKey{ Key::kV };
 	PasteType     pasteType{ PasteType::kCursor };
 	std::uint32_t inputDelay{ 10 };
 
-	std::uint32_t commandHistoryLimit{ 50 };
+	std::uint32_t                        consoleHistoryLimit{ 50 };
+	bool                                 allowDuplicateHistory{ true };
+	std::optional<std::filesystem::path> consoleHistoryPath{};
+	std::vector<std::string>             consoleHistoryEntries{};
 
-private:
-	Settings();
-
-	// members
-	const wchar_t* path{ L"Data/SKSE/Plugins/po3_ConsolePlusPlus.ini" };
+	const wchar_t* configPath{ L"Data/SKSE/Plugins/po3_ConsolePlusPlus.ini" };
 };

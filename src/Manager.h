@@ -2,9 +2,7 @@
 
 namespace Console
 {
-	using EventResult = RE::BSEventNotifyControl;
-
-	namespace util
+	namespace detail
 	{
 		std::string GetClipboardText();
 
@@ -20,27 +18,25 @@ namespace Console
 		public RE::BSTEventSink<RE::InputEvent*>
 	{
 	public:
-		static void Register()
-		{
-			logger::info("{:*^30}", "EVENTS");
+		static void Register();
+		static void ClearConsoleHistory();
 
-			if (const auto UI = RE::UI::GetSingleton()) {
-				UI->AddEventSink<RE::MenuOpenCloseEvent>(GetSingleton());
-				logger::info("Registered menu open/close event");
-			}
-		}
+    private:
+		static void SaveConsoleHistory();
+		void        LoadConsoleHistory();
 
-	private:
-		static void SaveCommands();
-		void        LoadCachedCommands();
-
-		EventResult ProcessEvent(const RE::MenuOpenCloseEvent* a_evn, RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override;
-		EventResult ProcessEvent(RE::InputEvent* const* a_evn, RE::BSTEventSource<RE::InputEvent*>*) override;
+		RE::BSEventNotifyControl ProcessEvent(const RE::MenuOpenCloseEvent* a_evn, RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override;
+		RE::BSEventNotifyControl ProcessEvent(RE::InputEvent* const* a_evn, RE::BSTEventSource<RE::InputEvent*>*) override;
 
 		// members
 		bool keyCombo1{ false };
 		bool keyCombo2{ false };
 
-		bool loadedCommandsFromCache{ false };
+		bool loadedConsoleHistory{ false };
 	};
+
+	namespace Clear
+	{
+		void Install();
+	}
 }

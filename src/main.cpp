@@ -1,9 +1,17 @@
 #include "Manager.h"
+#include "Settings.h"
 
 void OnInit(SKSE::MessagingInterface::Message* a_msg)
 {
-	if (a_msg->type == SKSE::MessagingInterface::kInputLoaded) {
+	switch (a_msg->type) {
+	case SKSE::MessagingInterface::kPostLoad:
+		Settings::GetSingleton()->LoadSettings();
+		break;
+	case SKSE::MessagingInterface::kInputLoaded:
 		Console::Manager::Register();
+		break;
+	default:
+		break;
 	}
 }
 

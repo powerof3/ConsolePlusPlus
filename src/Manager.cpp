@@ -3,7 +3,7 @@
 
 namespace Console
 {
-	namespace util
+	namespace detail
 	{
 		// https://stackoverflow.com/a/14763025
 		std::string GetClipboardText()
@@ -37,14 +37,10 @@ namespace Console
 
 		RE::GFxMovie* GetConsoleMovie()
 		{
-			if (const auto UI = RE::UI::GetSingleton()) {
-				if (const auto consoleMenu = UI->GetMenu<RE::Console>()) {
-					if (const auto& consoleMovie = consoleMenu->uiMovie) {
-						return consoleMovie.get();
-					}
-				}
-			}
-			return nullptr;
+			const auto UI = RE::UI::GetSingleton();
+			const auto consoleMenu = UI ? UI->GetMenu<RE::Console>() : nullptr;
+
+			return consoleMenu ? consoleMenu->uiMovie.get() : nullptr;
 		}
 
 		std::string GetVariableString(const RE::GFxMovie* a_movie, const char* a_path)
@@ -62,60 +58,57 @@ namespace Console
 		}
 	}
 
-	void Manager::SaveCommands()
+	void Manager::Register()
 	{
-		if (const auto consoleMovie = util::GetConsoleMovie()) {
-			// MIC's Clear command does not clear command array
+		logger::info("{:*^30}", "HOOKS");
 
-			/*const auto commandHistory = util::GetVariableString(consoleMovie, "_global.Console.ConsoleInstance.CommandHistory.text");
-			if (commandHistory.empty()) {
-				Settings::GetSingleton()->ClearCommands();
-				return;
-			}*/
+		Clear::Install();
 
+		logger::info("{:*^30}", "EVENTS");
+
+		if (const auto UI = RE::UI::GetSingleton()) {
+			UI->AddEventSink<RE::MenuOpenCloseEvent>(GetSingleton());
+			logger::info("Registered menu open/close event");
+		}
+	}
+
+	void Manager::SaveConsoleHistory()
+	{
+		if (const auto consoleMovie = detail::GetConsoleMovie()) {
 			RE::GFxValue commandsVal;
 			consoleMovie->GetVariable(&commandsVal, "_global.Console.ConsoleInstance.Commands");
 
 			if (commandsVal.IsArray()) {
 				const auto size = commandsVal.GetArraySize();
 				if (size == 0) {
-					Settings::GetSingleton()->ClearCommands();
+					Settings::GetSingleton()->ClearConsoleHistoryFromFile();
 					return;
 				}
 
-				logger::info("Saving commands to file...");
+				logger::info("Saving console history to file ({} entries)", size);
 
-				std::vector<std::string> commands;
-				commands.reserve(size);
-
-				commandsVal.VisitMembers([&]([[maybe_unused]] const char* a_name, const RE::GFxValue& a_val) {
-					if (a_val.IsString()) {
-						commands.emplace_back(a_val.GetString());
-					}
-				});
-
-				Settings::GetSingleton()->SaveCommands(commands);
+				Settings::GetSingleton()->SaveConsoleHistoryToFile(commandsVal);
 			}
 		}
 	}
 
-	void Manager::LoadCachedCommands()
+	void Manager::LoadConsoleHistory()
 	{
-		if (!loadedCommandsFromCache) {
-			loadedCommandsFromCache = true;
+		if (!loadedConsoleHistory) {
+			loadedConsoleHistory = true;
 
 			SKSE::GetTaskInterface()->AddUITask([] {
-				const std::vector<std::string> commands = Settings::GetSingleton()->LoadCommands();
+				const std::vector<std::string> commands = Settings::GetSingleton()->GetConsoleHistory();
 
 				if (commands.empty()) {
-					logger::info("Cached commands not found...");
+					logger::info("Console history not found...");
 					return;
 				}
 
-				if (const auto consoleMovie = util::GetConsoleMovie()) {
-					logger::info("Loading cached commands from file...");
+				if (const auto consoleMovie = detail::GetConsoleMovie()) {
+					logger::info("Loading console history from file...");
 
-				    RE::GFxValue commandsVal;
+					RE::GFxValue commandsVal;
 					consoleMovie->GetVariable(&commandsVal, "_global.Console.ConsoleInstance.Commands");
 
 					if (commandsVal.IsArray()) {
@@ -132,10 +125,27 @@ namespace Console
 		}
 	}
 
-	EventResult Manager::ProcessEvent(const RE::MenuOpenCloseEvent* a_evn, RE::BSTEventSource<RE::MenuOpenCloseEvent>*)
+	void Manager::ClearConsoleHistory()
+	{
+		SKSE::GetTaskInterface()->AddUITask([] {
+			if (const auto consoleMovie = detail::GetConsoleMovie()) {
+				logger::info("Clearing console history...");
+
+				RE::GFxValue commandsVal;
+				consoleMovie->GetVariable(&commandsVal, "_global.Console.ConsoleInstance.Commands");
+
+				if (commandsVal.IsArray()) {
+					commandsVal.ClearElements();
+					Settings::GetSingleton()->ClearConsoleHistoryFromFile();
+				}
+			}
+		});
+	}
+
+	RE::BSEventNotifyControl Manager::ProcessEvent(const RE::MenuOpenCloseEvent* a_evn, RE::BSTEventSource<RE::MenuOpenCloseEvent>*)
 	{
 		if (!a_evn || a_evn->menuName != RE::Console::MENU_NAME) {
-			return EventResult::kContinue;
+			return RE::BSEventNotifyControl::kContinue;
 		}
 
 		if (const auto inputMgr = RE::BSInputDeviceManager::GetSingleton()) {
@@ -145,16 +155,16 @@ namespace Console
 			const auto settings = Settings::GetSingleton();
 
 			if (a_evn->opening) {
-				if (settings->enableCommandCache) {
-					LoadCachedCommands();
+				if (settings->enableConsoleHistory) {
+					LoadConsoleHistory();
 				}
 				if (settings->enableCopyPaste) {
 					inputMgr->AddEventSink(GetSingleton());
 				}
 			} else {
-				if (settings->enableCommandCache) {
+				if (settings->enableConsoleHistory) {
 					SKSE::GetTaskInterface()->AddUITask([] {
-						SaveCommands();
+						SaveConsoleHistory();
 					});
 				}
 				if (settings->enableCopyPaste) {
@@ -163,13 +173,13 @@ namespace Console
 			}
 		}
 
-		return EventResult::kContinue;
+		return RE::BSEventNotifyControl::kContinue;
 	}
 
-	EventResult Manager::ProcessEvent(RE::InputEvent* const* a_evn, RE::BSTEventSource<RE::InputEvent*>*)
+	RE::BSEventNotifyControl Manager::ProcessEvent(RE::InputEvent* const* a_evn, RE::BSTEventSource<RE::InputEvent*>*)
 	{
 		if (!a_evn || keyCombo1 && keyCombo2) {
-			return EventResult::kContinue;
+			return RE::BSEventNotifyControl::kContinue;
 		}
 
 		const auto settings = Settings::GetSingleton();
@@ -192,7 +202,7 @@ namespace Console
 		}
 
 		if (keyCombo1 && keyCombo2) {
-			if (const auto clipboardText = util::GetClipboardText(); !clipboardText.empty()) {
+			if (const auto clipboardText = detail::GetClipboardText(); !clipboardText.empty()) {
 				std::jthread thread([this, settings, pasteAtEnd, clipboardText] {
 					RE::BSInputDeviceManager::GetSingleton()->RemoveEventSink(GetSingleton());
 
@@ -200,9 +210,9 @@ namespace Console
 					std::this_thread::sleep_for(std::chrono::milliseconds(settings->inputDelay));
 
 					SKSE::GetTaskInterface()->AddUITask([this, pasteAtEnd, clipboardText] {
-						if (const auto consoleMovie = util::GetConsoleMovie()) {
+						if (const auto consoleMovie = detail::GetConsoleMovie()) {
 							// get old text
-							std::string oldText = util::GetVariableString(consoleMovie, "_global.Console.ConsoleInstance.CommandEntry.text");
+							std::string oldText = detail::GetVariableString(consoleMovie, "_global.Console.ConsoleInstance.CommandEntry.text");
 							// paste
 							if (pasteAtEnd) {
 								// append new text to old
@@ -224,7 +234,7 @@ namespace Console
 								std::string newText = oldText;
 								bool        appended{ false };
 								// get cursor position
-								const auto cursorPos = util::GetVariableInt(consoleMovie, "_global.Console.ConsoleInstance.CommandEntry.caretIndex");
+								const auto cursorPos = detail::GetVariableInt(consoleMovie, "_global.Console.ConsoleInstance.CommandEntry.caretIndex");
 								// insert at cursor pos
 								if (oldText.size() > cursorPos) {
 									appended = false;
@@ -258,6 +268,28 @@ namespace Console
 			keyCombo2 = false;
 		}
 
-		return EventResult::kContinue;
+		return RE::BSEventNotifyControl::kContinue;
 	}
+
+    namespace Clear
+    {
+		bool ClearHistory(const RE::SCRIPT_PARAMETER*, RE::SCRIPT_FUNCTION::ScriptData*, RE::TESObjectREFR*, RE::TESObjectREFR*, RE::Script*, RE::ScriptLocals*, double&, std::uint32_t&)
+		{
+			Manager::ClearConsoleHistory();
+			return true;
+		}
+
+		void Install()
+		{
+			constexpr auto LONG_NAME = "ClearConsoleHistory"sv;
+			constexpr auto SHORT_NAME = "ClearHistory"sv;
+
+		    if (const auto function = RE::SCRIPT_FUNCTION::LocateConsoleCommand("ToggleContextOverlay"); function) {
+				function->functionName = LONG_NAME.data();
+				function->shortName = SHORT_NAME.data();
+			    function->executeFunction = &ClearHistory;
+				logger::debug("installed ClearConsole hook");
+			}
+		}
+    }
 }
