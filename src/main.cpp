@@ -23,7 +23,7 @@ extern "C" DLLEXPORT constinit auto SKSEPlugin_Version = []() {
 	v.AuthorName("powerofthree");
 	v.UsesAddressLibrary();
 	v.UsesNoStructs();
-	v.CompatibleVersions({ SKSE::RUNTIME_LATEST });
+	v.CompatibleVersions({ SKSE::RUNTIME_SSE_LATEST });
 
 	return v;
 }();
@@ -42,7 +42,7 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Query(const SKSE::QueryInterface* a
 	const auto ver = a_skse->RuntimeVersion();
 	if (ver
 #	ifndef SKYRIMVR
-		< SKSE::RUNTIME_1_5_39
+		< SKSE::RUNTIME_SSE_1_5_39
 #	else
 		> SKSE::RUNTIME_VR_1_4_15_1
 #	endif
@@ -82,7 +82,7 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_s
 
 	logger::info("Game version : {}", a_skse->RuntimeVersion().string());
 
-	SKSE::Init(a_skse);
+	SKSE::Init(a_skse, false);
 
 	auto messaging = SKSE::GetMessagingInterface();
 	messaging->RegisterListener("SKSE", OnInit);
