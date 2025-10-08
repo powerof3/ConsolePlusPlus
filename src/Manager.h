@@ -13,7 +13,7 @@ namespace Console
 	}
 
 	class Manager final :
-		public ISingleton<Manager>,
+		public REX::Singleton<Manager>,
 		public RE::BSTEventSink<RE::MenuOpenCloseEvent>,
 		public RE::BSTEventSink<RE::InputEvent*>
 	{
@@ -21,7 +21,7 @@ namespace Console
 		static void Register();
 		static void ClearConsoleHistory();
 
-    private:
+	private:
 		static void SaveConsoleHistory();
 		void        LoadConsoleHistory();
 

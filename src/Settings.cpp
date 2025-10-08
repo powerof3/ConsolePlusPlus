@@ -1,5 +1,28 @@
 #include "Settings.h"
 
+struct detail
+{
+	static const char* GetGameVersionImpl()
+	{
+		using func_t = decltype(&GetGameVersionImpl);
+		static REL::Relocation<func_t> func{ RELOCATION_ID(15485, 15650) };
+		return func();
+	}
+
+	static REL::Version GetGameVersion()
+	{
+		std::stringstream            ss(GetGameVersionImpl());
+		std::string                  token;
+		std::array<std::uint16_t, 4> version{};
+
+		for (std::size_t i = 0; i < 4 && std::getline(ss, token, '.'); ++i) {
+			version[i] = static_cast<std::uint16_t>(std::stoi(token));
+		}
+
+		return REL::Version(version);
+	}
+};
+
 void Settings::LoadSettings()
 {
 	CSimpleIniA ini;
@@ -29,10 +52,20 @@ void Settings::LoadSettings()
 	if (consoleHistoryPath = logger::log_directory(); consoleHistoryPath) {
 		consoleHistoryPath->remove_filename();  // remove "/SKSE"
 		consoleHistoryPath->append("SkyrimConsoleHistory.txt");
-		if (!std::filesystem::exists(*consoleHistoryPath)) {
+		std::error_code ec;
+		if (!std::filesystem::exists(*consoleHistoryPath, ec)) {
 			std::ofstream ofs{ *consoleHistoryPath };
 		}
 	}
+
+#ifdef SKYRIM_AE
+	if (auto gameVersion = detail::GetGameVersion(); gameVersion >= SKSE::RUNTIME_SSE_1_6_1130) {
+		logger::warn("Disabling copy/paste feature on version {}", gameVersion);
+		enableCopyPaste = false;
+	}
+#endif
+
+	logger::info("Console history limit: {}", consoleHistoryLimit);
 }
 
 const std::vector<std::string>& Settings::GetConsoleHistory()
@@ -93,6 +126,8 @@ void Settings::LoadConsoleHistoryFromFile()
 			input_file.close();
 		}
 	}
+
+	logger::info("{} console entries loaded", consoleHistoryEntries.size());
 
 	if (consoleHistoryEntries.size() > consoleHistoryLimit) {
 		std::ranges::reverse(consoleHistoryEntries);
