@@ -18,8 +18,8 @@ jobs:
       CMAKE_SE_BUILD_PRESET: 'vs2022-se'
       CMAKE_AE_CONFIG_PRESET: 'vs2022-ae'
       CMAKE_AE_BUILD_PRESET: 'vs2022-ae'
-      CMAKE_VR_CONFIG_PRESET: 'vs2022-vr'
-      CMAKE_VR_BUILD_PRESET: 'vs2022-vr'
+      CMAKE_VR_CONFIG_PRESET: ''
+      CMAKE_VR_BUILD_PRESET: ''
       FOMOD_INCLUDE_PDB: true
       FOMOD_MOD_NAME: "ConsolePlusPlus"
       FOMOD_MOD_AUTHOR: "powerofthree"
