@@ -1,27 +1,19 @@
 #pragma once
 
 #include "RE/Skyrim.h"
-#include "REX/REX/Singleton.h"
+#include "REX/REX.h"
 #include "SKSE/SKSE.h"
 
-#include <ClibUtil/simpleINI.hpp>
-#include <ClibUtil/string.hpp>
 #include <spdlog/sinks/basic_file_sink.h>
-#include <xbyak/xbyak.h>
-
-namespace logger = SKSE::log;
-namespace string = clib_util::string;
-namespace ini = clib_util::ini;
 
 using namespace std::literals;
 
-namespace stl
-{
-	using namespace SKSE::stl;
-}
-
 using Key = RE::BSKeyboardDevice::Keys::Key;
 
-#define DLLEXPORT __declspec(dllexport)
+namespace Runtime
+{
+	inline constexpr REL::Version SSE_1_7_99(1, 7, 99, 0);
+	inline constexpr REL::Version MIN_ADDRESS_LIBRARY_V5 = SSE_1_7_99;
+}
 
 #include "Version.h"

@@ -13,7 +13,7 @@ namespace Console
 	}
 
 	class Manager final :
-		public REX::Singleton<Manager>,
+		public REX::TSingleton<Manager>,
 		public RE::BSTEventSink<RE::MenuOpenCloseEvent>,
 		public RE::BSTEventSink<RE::InputEvent*>
 	{

@@ -1,6 +1,12 @@
 #include "Manager.h"
 #include "Settings.h"
 
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#undef ERROR
+#undef GetObject
+
 namespace Console
 {
 	namespace detail
@@ -60,15 +66,15 @@ namespace Console
 
 	void Manager::Register()
 	{
-		logger::info("{:*^30}", "HOOKS");
+		REX::INFO("{:*^30}", "HOOKS");
 
 		Clear::Install();
 
-		logger::info("{:*^30}", "EVENTS");
+		REX::INFO("{:*^30}", "EVENTS");
 
 		if (const auto UI = RE::UI::GetSingleton()) {
 			UI->AddEventSink<RE::MenuOpenCloseEvent>(GetSingleton());
-			logger::info("Registered menu open/close event");
+			REX::INFO("Registered menu open/close event");
 		}
 	}
 
@@ -85,7 +91,7 @@ namespace Console
 					return;
 				}
 
-				logger::info("Saving console history to file ({} entries)", size);
+				REX::INFO("Saving console history to file ({} entries)", size);
 
 				Settings::GetSingleton()->SaveConsoleHistoryToFile(commandsVal);
 			}
@@ -101,12 +107,12 @@ namespace Console
 				const std::vector<std::string> commands = Settings::GetSingleton()->GetConsoleHistory();
 
 				if (commands.empty()) {
-					logger::info("Console history not found...");
+					REX::INFO("Console history not found...");
 					return;
 				}
 
 				if (const auto consoleMovie = detail::GetConsoleMovie()) {
-					logger::info("Loading console history from file...");
+					REX::INFO("Loading console history from file...");
 
 					RE::GFxValue commandsVal;
 					consoleMovie->GetVariable(&commandsVal, "_global.Console.ConsoleInstance.Commands");
@@ -129,7 +135,7 @@ namespace Console
 	{
 		SKSE::GetTaskInterface()->AddUITask([] {
 			if (const auto consoleMovie = detail::GetConsoleMovie()) {
-				logger::info("Clearing console history...");
+				REX::INFO("Clearing console history...");
 
 				RE::GFxValue commandsVal;
 				consoleMovie->GetVariable(&commandsVal, "_global.Console.ConsoleInstance.Commands");
@@ -158,18 +164,22 @@ namespace Console
 				if (settings->enableConsoleHistory) {
 					LoadConsoleHistory();
 				}
+#ifndef SKYRIM_SUPPORT_AE
 				if (settings->enableCopyPaste) {
 					inputMgr->AddEventSink(GetSingleton());
 				}
+#endif
 			} else {
 				if (settings->enableConsoleHistory) {
 					SKSE::GetTaskInterface()->AddUITask([] {
 						SaveConsoleHistory();
 					});
 				}
+#ifndef SKYRIM_SUPPORT_AE
 				if (settings->enableCopyPaste) {
 					inputMgr->RemoveEventSink(GetSingleton());
 				}
+#endif
 			}
 		}
 
@@ -183,7 +193,7 @@ namespace Console
 		}
 
 		const auto settings = Settings::GetSingleton();
-		bool       pasteAtEnd = settings->pasteType == Settings::PasteType::kEndOfText;
+		bool       pasteAtEnd = settings->PasteAtEnd();
 
 		for (auto event = *a_evn; event; event = event->next) {
 			if (const auto button = event->AsButtonEvent()) {
@@ -271,8 +281,8 @@ namespace Console
 		return RE::BSEventNotifyControl::kContinue;
 	}
 
-    namespace Clear
-    {
+	namespace Clear
+	{
 		bool ClearHistory(const RE::SCRIPT_PARAMETER*, RE::SCRIPT_FUNCTION::ScriptData*, RE::TESObjectREFR*, RE::TESObjectREFR*, RE::Script*, RE::ScriptLocals*, double&, std::uint32_t&)
 		{
 			Manager::ClearConsoleHistory();
@@ -284,12 +294,12 @@ namespace Console
 			constexpr auto LONG_NAME = "ClearConsoleHistory"sv;
 			constexpr auto SHORT_NAME = "ClearHistory"sv;
 
-		    if (const auto function = RE::SCRIPT_FUNCTION::LocateConsoleCommand("ToggleContextOverlay"); function) {
+			if (const auto function = RE::SCRIPT_FUNCTION::LocateConsoleCommand("ToggleContextOverlay"); function) {
 				function->functionName = LONG_NAME.data();
 				function->shortName = SHORT_NAME.data();
-			    function->executeFunction = &ClearHistory;
-				logger::debug("installed ClearConsole hook");
+				function->executeFunction = &ClearHistory;
+				REX::DEBUG("installed ClearConsole hook");
 			}
 		}
-    }
+	}
 }

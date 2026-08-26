@@ -1,55 +1,35 @@
 #include "Settings.h"
 
-struct detail
-{
-	static const char* GetGameVersionImpl()
-	{
-		using func_t = decltype(&GetGameVersionImpl);
-		static REL::Relocation<func_t> func{ RELOCATION_ID(15485, 15650) };
-		return func();
-	}
+#include <SimpleIni.h>
+#undef ERROR
 
-	static REL::Version GetGameVersion()
-	{
-		std::stringstream            ss(GetGameVersionImpl());
-		std::string                  token;
-		std::array<std::uint16_t, 4> version{};
-
-		for (std::size_t i = 0; i < 4 && std::getline(ss, token, '.'); ++i) {
-			version[i] = static_cast<std::uint16_t>(std::stoi(token));
-		}
-
-		return REL::Version(version);
-	}
-};
-
-void Settings::LoadSettings()
+void Settings::UpdateINISettings() const
 {
 	CSimpleIniA ini;
 	ini.SetUnicode();
 
-	ini.LoadFile(configPath);
+	if (ini.LoadFile(configPath) < SI_OK) {
+		return;
+	}
 
-	// 1.4.0 -  delete old settings
+	// 1.4.0 - delete old settings
 	if (ini.GetLongValue("Settings", "Command History Limit", -1) != -1) {
 		ini.Delete("Settings", nullptr);
 		ini.Delete("CopyPaste", nullptr);
+		(void)ini.SaveFile(configPath);
 	}
+}
 
-	ini::get_value(ini, enableCopyPaste, "Settings", "bCopyPaste", ";Copy text from clipboard and paste into console");
-	ini::get_value(ini, enableConsoleHistory, "Settings", "bCacheConsoleHistory", ";Cache console entries between game instances");
+void Settings::LoadSettings()
+{
+	UpdateINISettings();
 
-	ini::get_value(ini, consoleHistoryLimit, "Settings", "iConsoleHistoryLimit", ";Number of console entries to save\n;Default: 50");
-	ini::get_value(ini, allowDuplicateHistory, "Settings", "bAllowDuplicateConsoleHistory", ";Save duplicate console entries");
+	const auto store = REX::FIniSettingStore::GetSingleton();
+	store->Init(configPath, "");
+	store->Load();
+	store->Save();
 
-	ini::get_value(ini, primaryKey, "CopyPaste", "iPrimaryKey", ";Keyboard scan codes : https://wiki.nexusmods.com/index.php/DirectX_Scancodes_And_How_To_Use_Them\n;Default: Left Ctrl");
-	ini::get_value(ini, secondaryKey, "CopyPaste", "iSecondaryKey", ";Default: V");
-	ini::get_value(ini, pasteType, "CopyPaste", "iPasteType", ";0 - insert text at cursor position | 1 - append text");
-	ini::get_value(ini, inputDelay, "CopyPaste", "iInputDelay", ";Delay between key press and text paste (in milliseconds)");
-
-	(void)ini.SaveFile(configPath);
-
-	if (consoleHistoryPath = logger::log_directory(); consoleHistoryPath) {
+	if (consoleHistoryPath = SKSE::log::log_directory(); consoleHistoryPath) {
 		consoleHistoryPath->remove_filename();  // remove "/SKSE"
 		consoleHistoryPath->append("SkyrimConsoleHistory.txt");
 		std::error_code ec;
@@ -58,14 +38,7 @@ void Settings::LoadSettings()
 		}
 	}
 
-#ifdef SKYRIM_AE
-	if (auto gameVersion = detail::GetGameVersion(); gameVersion >= SKSE::RUNTIME_SSE_1_6_1130) {
-		logger::warn("Disabling copy/paste feature on version {}", gameVersion);
-		enableCopyPaste = false;
-	}
-#endif
-
-	logger::info("Console history limit: {}", consoleHistoryLimit);
+	REX::INFO("Console history limit: {}", consoleHistoryLimit.GetValue());
 }
 
 const std::vector<std::string>& Settings::GetConsoleHistory()
@@ -127,7 +100,7 @@ void Settings::LoadConsoleHistoryFromFile()
 		}
 	}
 
-	logger::info("{} console entries loaded", consoleHistoryEntries.size());
+	REX::INFO("{} console entries loaded", consoleHistoryEntries.size());
 
 	if (consoleHistoryEntries.size() > consoleHistoryLimit) {
 		std::ranges::reverse(consoleHistoryEntries);
