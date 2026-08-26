@@ -24,6 +24,7 @@ namespace Console
 			// Get handle of clipboard object for ANSI text
 			const HANDLE hData = GetClipboardData(CF_TEXT);
 			if (hData == nullptr) {
+				CloseClipboard();
 				return text;
 			}
 
