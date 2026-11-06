@@ -50,6 +50,48 @@ namespace Console
 			return consoleMenu ? consoleMenu->uiMovie.get() : nullptr;
 		}
 
+		bool GetConsoleCaretIndex(RE::GFxMovie* movie, double& caretIndexOut)
+		{
+			RE::GFxValue value;
+			if (!movie->GetVariable(&value, "_global.Console.ConsoleInstance.CommandEntry.caretIndex") || !value.IsNumber()) {
+				return false;
+			}
+			caretIndexOut = value.GetNumber();
+			return true;
+		}
+
+		bool CreateStringObject(RE::GFxMovie* movie, std::string_view text, RE::GFxValue& objectOut)
+		{
+			const RE::GFxValue args(text);
+			movie->CreateObject(&objectOut, "String", &args, 1);
+			if (!objectOut.IsObject()) {
+				return false;
+			}
+			return true;
+		}
+
+		bool GetStringObjectLength(const RE::GFxValue& object, double& lengthOut)
+		{
+			RE::GFxValue value;
+			object.GetMember("length", &value);
+			if (!value.IsNumber()) {
+				return false;
+			}
+			lengthOut = value.GetNumber();
+			return true;
+		}
+
+		bool GetStringObjectSubStr(RE::GFxValue& object, double start, double length, std::string& textOut)
+		{
+			const RE::GFxValue args[2]{ start, length };
+			RE::GFxValue       result;
+			if (!object.Invoke("substr", &result, args, 2) || !result.IsString()) {
+				return false;
+			}
+			textOut = result.GetString();
+			return true;
+		}
+
 		std::string GetVariableString(const RE::GFxMovie* a_movie, const char* a_path)
 		{
 			RE::GFxValue textVar;
@@ -222,52 +264,7 @@ namespace Console
 
 					SKSE::GetTaskInterface()->AddUITask([this, pasteAtEnd, clipboardText] {
 						if (const auto consoleMovie = detail::GetConsoleMovie()) {
-							// get old text
-							std::string oldText = detail::GetVariableString(consoleMovie, "_global.Console.ConsoleInstance.CommandEntry.text");
-							// paste
-							if (pasteAtEnd) {
-								// append new text to old
-								// erase key
-								auto newText = oldText + clipboardText;
-								if (!oldText.empty()) {
-									newText.erase(oldText.length() - 1, 1);
-								}
-								// overwrite command text
-								consoleMovie->SetVariable("_global.Console.ConsoleInstance.CommandEntry.text", newText.c_str());
-								// move cursor to end of text
-								const RE::GFxValue args[2]{ newText.length(), newText.length() };
-								consoleMovie->Invoke("Selection.setSelection", nullptr, args, 2);
-							} else {
-								// erase text if only key pressed
-								if (oldText.size() == 1) {
-									oldText.erase(0, 1);
-								}
-								std::string newText = oldText;
-								bool        appended{ false };
-								// get cursor position
-								const auto cursorPos = detail::GetVariableInt(consoleMovie, "_global.Console.ConsoleInstance.CommandEntry.caretIndex");
-								// insert at cursor pos
-								if (oldText.size() > cursorPos) {
-									appended = false;
-									newText.insert(cursorPos, clipboardText);
-									newText.erase(cursorPos - 1, 1);
-								} else {  // or append if cursor is at end
-									appended = true;
-									newText += clipboardText;
-									if (!oldText.empty()) {
-										newText.erase(oldText.length() - 1, 1);
-									}
-								}
-								//	overwrite command text
-								consoleMovie->SetVariable("_global.Console.ConsoleInstance.CommandEntry.text", newText.c_str());
-								// move cursor
-								const auto index =
-									appended ?
-										newText.length() :
-										cursorPos + (clipboardText.length() - 1);
-								const RE::GFxValue args[2]{ index, index };
-								consoleMovie->Invoke("Selection.setSelection", nullptr, args, 2);
-							}
+							PasteText(consoleMovie, clipboardText, pasteAtEnd);
 						}
 
 						RE::BSInputDeviceManager::GetSingleton()->AddEventSink(GetSingleton());
@@ -280,6 +277,67 @@ namespace Console
 		}
 
 		return RE::BSEventNotifyControl::kContinue;
+	}
+
+	bool Manager::PasteText(RE::GFxMovie* consoleMovie, const std::string& clipboardText, bool pasteAtEnd)
+	{
+		constexpr auto isPastedKey = [](std::string_view str) { return str == "v" || str == "V"; };
+
+		std::string oldText = detail::GetVariableString(consoleMovie, "_global.Console.ConsoleInstance.CommandEntry.text");
+		double oldIndex = 0.0;
+		if (!detail::GetConsoleCaretIndex(consoleMovie, oldIndex)) {
+			return false;
+		}
+
+		RE::GFxValue oldString;
+		RE::GFxValue clipboardString;
+		double oldLength = 0.0;
+		double clipboardLength = 0.0;
+		if (!detail::CreateStringObject(consoleMovie, oldText, oldString) ||
+			!detail::CreateStringObject(consoleMovie, clipboardText, clipboardString)) {
+			return false;
+		}
+		if (!detail::GetStringObjectLength(oldString, oldLength) ||
+			!detail::GetStringObjectLength(clipboardString, clipboardLength)) {
+			return false;
+		}
+
+		double prefixLength = oldIndex;
+		double suffixLength = oldLength - oldIndex;
+		if (oldIndex > 0.0) {
+			std::string prevChar;
+			if (!detail::GetStringObjectSubStr(oldString, oldIndex - 1.0, 1.0, prevChar)) {
+				return false;
+			}
+
+			if (isPastedKey(prevChar)) {
+				prefixLength = oldIndex - 1.0;
+			}
+		}
+
+		std::string newText = oldText;
+		double newIndex = oldIndex;
+		std::string prefix;
+		std::string suffix;
+		if (!detail::GetStringObjectSubStr(oldString, 0.0, prefixLength, prefix) || !detail::GetStringObjectSubStr(oldString, oldIndex, suffixLength, suffix)) {
+			return false;
+		}
+		if (pasteAtEnd) {
+			newText = prefix + suffix + clipboardText;
+			newIndex = prefixLength + suffixLength + clipboardLength;
+		} else {
+			newText = prefix + clipboardText + suffix;
+			newIndex = prefixLength + clipboardLength;
+		}
+		// overwrite command text
+		if (!consoleMovie->SetVariable("_global.Console.ConsoleInstance.CommandEntry.text", newText.c_str())) {
+			return false;
+		}
+
+		// move cursor
+		const RE::GFxValue args[2]{ newIndex, newIndex };
+		consoleMovie->Invoke("Selection.setSelection", nullptr, args, 2);
+		return true;
 	}
 
 	namespace Clear
